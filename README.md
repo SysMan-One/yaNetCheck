@@ -13,7 +13,7 @@ Typical applications:
 - distinguishing "packets do not reach the wire" from "packets reach the interface but are dropped by the local firewall" (the AF_PACKET receiver sees frames before netfilter, the UDP receiver sees them after);
 - long-run soak testing: the tool prints periodic statistics and survives sender/receiver restarts on either side.
 
-Current revision: X.01-02.
+Current revision: X.01-28ECO02 (`__IDENT__` of `src/yanetchk.c`; the build takes the version, 1.28.2, from it).
 
 ## Build
 
@@ -21,8 +21,8 @@ Current revision: X.01-02.
 
 - Linux with glibc (tested on x86_64 and aarch64), kernel 3.x or newer;
 - GCC or Clang with C11 support (`_Atomic` is used);
-- the StarLet package (UTILITY$ROUTINES, revision of 01-AUG-2026 or later - utility_routines V.01-24 (StarLet 1.2.2), cli_routines X.00-16, starlet X.01-12). It is consumed as an installed CMake package rather than vendored in-tree: build and install it once, then point this build at its prefix. V.01-13/14 fix two stack overflows in the `$LOG` path; V.01-17 is the current baseline;
-- the external HELP package (the HELPTRAN librarian and the HELP browser): `yanetchk.md` is compiled into `yanetchk.hlb` by `helptran`, and `/HELP` delegates to the `help` browser. yanetchk carries no help-reading code of its own anymore.
+- the StarLet package (UTILITY$ROUTINES, [SysMan-One/utility_routines](https://github.com/SysMan-One/utility_routines)). It is consumed as an installed CMake package rather than vendored in-tree: build and install it once, then point this build at its prefix. The CI builds against StarLet 1.7.2 (commit `7e910f8`);
+- the external HELP package ([SysMan-One/vHELP](https://github.com/SysMan-One/vHELP): the librarian `vhelptran`/`helptran` and the browser `vhelp`/`help`): `doc/yanetchk.md` is compiled into `yanetchk.hlb` by the librarian, and `/HELP` delegates to the browser. yanetchk carries no help-reading code of its own anymore. The CI builds against HELP X.01-38ECO01 (commit `9f89cd6`).
 
 Install the StarLet package first:
 
@@ -56,7 +56,7 @@ $ ctest --test-dir build
 $ cmake --install build
 ```
 
-`helptran` and the `help` browser (the HELP package) must be on the `PATH` or under `CMAKE_PREFIX_PATH` at configure time. Without `helptran` the library is not built and `/HELP` falls back to the built-in table summary; the `help` browser is a run-time dependency looked up on the `PATH`.
+The librarian (`vhelptran` or `helptran`) and the browser (`vhelp` or `help`) of the HELP package must be on the `PATH` or under `CMAKE_PREFIX_PATH` at configure time. Without the librarian the library is not built and `/HELP` falls back to the built-in table summary; the browser is a run-time dependency looked up on the `PATH`.
 
 This installs `bin/yanetchk` and `share/yanetchk/yanetchk.hlb`.
 
@@ -87,18 +87,18 @@ The UDP engines use the normal kernel IP stack (routing, ARP, netfilter). The AF
 
 The command line follows the DCL convention: a verb followed by /QUALIFIER=value items (the `-qualifier=value` form is accepted as well). Qualifier names are case-insensitive and may be abbreviated to an unambiguous prefix; an exact name always wins over an abbreviation of a longer one.
 
-The help is built in and generated from the command tables, so it never gets out of sync with the code:
+The help is asked for like this:
 
 ```
-$ yanetchk                  # no arguments: the list of available commands
+$ yanetchk                  # no arguments: the help overview
 $ yanetchk /HELP            # the same (also -h, --help)
-$ yanetchk send /HELP       # the SYNOPSIS of 'send': qualifiers, types,
-$ yanetchk receive /HELP    #   defaults and the required flags
+$ yanetchk send /HELP       # the SEND command
+$ yanetchk receive /HELP    # the RECEIVE command
 ```
 
 A help request is detected before the parameter validation, so `yanetchk send /HELP` works even though /TIP is required for a real run.
 
-The help text lives in `yanetchk.md` (the HELP package's Markdown format) and is compiled into a `yanetchk.hlb` library by `helptran` at build time. At runtime `/HELP` fork/execs the external `help` browser against that library, passing the topic path words, so topic paths work and may be abbreviated:
+The help text lives in `yanetchk.md` (the HELP package's Markdown format) and is compiled into a `yanetchk.hlb` library by `helptran` at build time. At runtime `/HELP` fork/execs the external HELP browser (`vhelp`, the name found at build time; `$YANETCHK_HELP` overrides it) against that library, passing the topic path words, so topic paths work and may be abbreviated:
 
 ```
 $ yanetchk help send tmac       # the /TMAC topic of the SEND command
@@ -108,13 +108,13 @@ $ yanetchk send /HELP           # the SEND command, as a switch
 
 The library is located, in order, via `$YANETCHK_HLP`, then next to the binary, then the build-time `YNETCHK$K_HLBDIR`, then `./yanetchk.hlb`. The browser is looked up next to the binary first, then on the `PATH`. When neither the library nor the browser can be found, a brief summary generated from the command tables is shown instead, so `/HELP` always answers.
 
-Building the help library (needs the HELP package's `helptran` on the `PATH`):
+Building the help library by hand (the CMake build does it; needs the HELP package's librarian on the `PATH`):
 
 ```
-$ helptran yanetchk.md /OUTPUT=yanetchk.hlb /IDENT=X-01
+$ vhelptran doc/yanetchk.md /OUTPUT=yanetchk.hlb /IDENT=X.01-28ECO02
 ```
 
-Install `yanetchk.hlb` and the `help` browser next to the `yanetchk` binary, or point `$YANETCHK_HLP` at the library.
+Install `yanetchk.hlb` and the HELP browser next to the `yanetchk` binary, or point `$YANETCHK_HLP` at the library.
 
 ### Qualifiers of `send`
 
@@ -125,10 +125,11 @@ Install `yanetchk.hlb` and the `help` browser next to the `yanetchk` binary, or 
 | /LIP=\<IPv4\>     | auto     | source IP for the AF_PACKET engine; when omitted, taken from the primary IPv4 of /IFNAME |
 | /LPN=\<n\>        | 12345    | source UDP port for the AF_PACKET engine |
 | /DATALEN=\<n\>    | 128      | UDP: payload length in octets; AF_PACKET: FULL frame length (clamped to the sane range) |
-| /DELTA=\<n\>      | 10000    | inter-packet pacing interval, microseconds (10000 us = 100 pkt/sec) |
+| /DELTA=\<n\>      | 10000000 | inter-packet pacing interval, nanoseconds (10000000 ns = 10 ms = 100 pkt/sec); `/DELTA=0` with `/RING` is line rate |
 | /IFNAME=\<name\>  | -        | interface name; enables the AF_PACKET engine |
 | /TMAC=\<mac\>     | built-in | destination (next hop) MAC, `aa:bb:cc:dd:ee:ff` or `aa-bb-cc-dd-ee-ff`; typically the router MAC |
-| /TRACE            | off      | extensible diagnostic output (also unmutes the per-packet ECONNREFUSED warnings) |
+| /RING             | off      | send through the TPACKET (PACKET_MMAP) TX ring, many frames per system call, with PACKET_QDISC_BYPASS where the kernel has it; needs /IFNAME, ignored with a warning without it; speed follows /DELTA |
+| /TRACE            | off      | extensible diagnostic output (in a Debug build also the per-packet ECONNREFUSED lines of the UDP sender) |
 | /LOGFILE=\<file\> | stdout   | file to accept logging |
 | /LOGSIZE=\<n\>    | -        | maximum log file size in octets |
 
@@ -139,7 +140,9 @@ Install `yanetchk.hlb` and the `help` browser next to the `yanetchk` binary, or 
 | /LIP=\<IPv4\>     | 0.0.0.0  | bind address (UDP) or an additional destination IP filter (AF_PACKET) |
 | /LPN=\<n\>        | 12345    | UDP port to listen/filter on |
 | /IFNAME=\<name\>  | -        | interface name; enables the AF_PACKET engine |
+| /RING             | off      | receive through the TPACKET_V3 (PACKET_MMAP) RX ring instead of one `recvfrom()` per frame; needs /IFNAME, ignored with a warning without it |
 | /TRACE            | off      | extensible diagnostic output |
+| /VERBOSE          | off      | print the per-packet SEQGAP, REORD and DUP messages, silent by default; the counters are kept either way |
 | /LOGFILE=\<file\> | stdout   | file to accept logging |
 | /LOGSIZE=\<n\>    | -        | maximum log file size in octets |
 
@@ -156,7 +159,7 @@ $ yanetchk receive /lpn=12347
 UDP sender, 1000 pkt/sec, 512-octet payload:
 
 ```
-$ yanetchk send /tip=192.168.1.10 /tpn=12347 /delta=1000 /datalen=512
+$ yanetchk send /tip=192.168.1.10 /tpn=12347 /delta=1000000 /datalen=512
 ```
 
 AF_PACKET sender (root), full 128-octet frames out of eth0, addressed to the router MAC, the source IP is taken from eth0 automatically:
@@ -183,20 +186,25 @@ To stop: the first SIGTERM/SIGINT/SIGQUIT (Ctrl-C) requests a graceful shutdown,
 
 ### The periodic statistics line
 
-Printed every ~3 seconds by the both sides:
+Printed every ~3 seconds by the both sides - STATS by the receiver, SENT by the sender:
 
 ```
-Rcvd: +197113 pkts, total: 89676009 pkts, lost: +0/112 pkts, Seq: 90250913, delta: 2527 nsec.
+%YANETCHK-I-STATS, Rcvd: +2499 pkts, total: 2499 pkts, lost: +0/0, reord: +0/0 (max 0), dup: +0/0, Seq: 2499, delta: 1031825 nsec, rate: 832 pps, 1292 kbit/s (wire).
+%YANETCHK-I-SENT, Sent: +2998 pkts, total: 2998 pkts, Seq: 2999, rate: 999 pps, 1550 kbit/s (wire).
 ```
 
 | Field       | Meaning |
 |-------------|---------|
-| Rcvd / Sent | the operational mode of this instance |
-| +N pkts     | packets received/sent during the last ~3-second interval; divide by 3 for the pps rate (+197113 = ~65.7 kpps) |
+| +N pkts     | packets received/sent during the last ~3-second interval |
 | total       | cumulative packets since the start |
-| lost: +N/M  | N = packets lost during the last interval, M = cumulative loss; a healthy steady state is `+0/M` with a constant M |
-| Seq         | the last seen (receiver) or sent (sender) sequence number |
-| delta       | the inter-arrival interval of the LAST packet of the interval, nanoseconds (receiver mode; meaningless on the sender) |
+| lost: +N/M  | N = packets lost during the last interval, M = cumulative loss; a gap is charged only when it leaves the 4096-packet reorder window unseen; a healthy steady state is `+0/M` with a constant M |
+| reord: +N/M (max D) | packets that arrived late but inside the window - recovered, NOT counted as loss; D is the deepest displacement seen |
+| dup: +N/M   | duplicates (the same Seq seen twice) |
+| Seq         | the high water mark (receiver) or the last sent (sender) sequence number |
+| delta       | the inter-arrival interval of the LAST packet of the interval, nanoseconds (receiver only) |
+| rate        | the measured packet rate and wire bandwidth of the interval (frame octets plus FCS, preamble and inter-frame gap) |
+
+An interval with no packet at all is raised to a WARNING, `%YANETCHK-W-NOTRAFFIC`; on shutdown the receiver prints the closing tally `%YANETCHK-I-FINAL`, where the still-pending gaps are counted as lost.
 
 Useful derived checks:
 
@@ -209,14 +217,17 @@ Useful derived checks:
 
 ### Event messages
 
+Each event is a message of the YANETCHK catalogue, `%YANETCHK-<severity>-<IDENT>, text`. SEQGAP, REORD and DUP are printed only with `/VERBOSE`; the others always.
+
 | Message | Meaning | Action |
 |---------|---------|--------|
-| `Sequence base synchronized, Seq: N` | the first valid packet after the receiver start; the receiver joined an already running stream at seq N | none, informational |
-| `Lost K packets` | a gap in the sequence numbers; K is added to the cumulative loss | investigate if it repeats: link errors, queue drops, CPU starvation on either side |
-| `Duplicate detected` | the same seq arrived twice | usually a L2 loop or a misbehaving bonding/mirroring setup |
-| `Old packet detected` | a shallow seq rollback (up to 100000) | genuine network reordering: multipath, bonding, QoS queues |
-| `Sender restart detected, resynchronize` | a deep seq rollback (more than 100000); the sender was restarted, the base is resynchronized, no loss is charged | none, informational |
-| `send()->-1, errno: 111 (ICMP Port Unreachable...)` | the UDP receiver is not listening; visible under /TRACE only | start the receiver; the sender keeps sending anyway |
+| `-W-SEQSYNC, Sequence base synchronized, Seq: N` | the first valid packet after the receiver start (the receiver joined the stream at seq N), or a resynchronization | none at the start; in the middle of a run it marks a discontinuity |
+| `-I-SEQGAP, Seq gap: A -> B (K ahead), pending` | a forward gap; the missing packets are held pending, not yet lost | none by itself: a lost packet shows up in `lost` when it leaves the window |
+| `-I-REORD, Rcvd Seq: N --- Reordered (K behind), recovered` | a late packet filled a pending gap; counted in `reord`, not in `lost` | genuine network reordering: multipath, bonding, QoS queues |
+| `-W-DEEPREORD, Rcvd Seq: N is K behind the window - deep reorder` | a packet older than the 4096-packet window | heavy reordering or a delayed path; such a packet was already charged as lost |
+| `-W-DUP, Rcvd Seq: N --- Duplicate detected` | the same seq arrived twice | usually a L2 loop or a misbehaving bonding/mirroring setup |
+| `-W-RESTART, High Seq: A --> Rcvd Seq: B --- Sender restart detected, resynchronize` | a deep seq rollback (more than 100000); the sender was restarted, the base is resynchronized, no loss is charged | none, informational |
+| `-W-NOTRAFFIC, Rcvd: +0 pkts in the last interval - no traffic received, ...` | nothing arrived in the last ~3 seconds | check that the sender runs and that the path (routes, firewall, /LIP, /LPN) is right |
 
 ### Where the loss happened: UDP vs AF_PACKET receiver
 
@@ -231,7 +242,7 @@ If the AF_PACKET receiver shows no loss while the UDP receiver does, the packets
 
 - The receiver may be started at any moment: the first valid packet only synchronizes the sequence base, the pre-start traffic is NOT counted as loss.
 - The sender may be restarted at any moment: the receiver detects the deep sequence rollback, prints a single warning and resynchronizes; the loss counters of the previous session are kept, the new session starts clean.
-- The sender survives receiver restarts: ICMP Port Unreachable is treated as a transient condition, the paced transmission continues, and the receiver will account the real gap on return.
+- The sender survives receiver restarts: ICMP Port Unreachable is treated as a transient condition, the paced transmission continues, and the receiver will account the real gap on return. The sender says nothing about it in a Release build (in a Debug build /TRACE shows a `send()->-1, errno: 111 (ICMP Port Unreachable...)` line per packet).
 
 ## Implementation notes
 
@@ -240,7 +251,7 @@ If the AF_PACKET receiver shows no loss while the UDP receiver does, the packets
 - The AF_PACKET receiver installs an in-kernel classic BPF filter (IPv4, UDP, non-fragmented, destination port), so unrelated traffic never reaches the userspace; locally originated frames are skipped by `sll_pkttype`, and the payload offset honors the actual IP header length (IHL), so IP options do not break the parsing.
 - The AF_PACKET sender forms the complete frame itself: the source MAC is taken from the interface (SIOCGIFHWADDR), the IP header checksum is computed, the UDP checksum is zero (permitted for IPv4). No ARP is performed - the destination MAC comes from `/TMAC`.
 - The statistics counters are C11 `_Atomic`, safe on the both 64- and 32-bit targets.
-- The command line engine is the StarLet CLI_ROUTINES library: the verb tables drive the parsing, the type validation (/TMAC is checked by the library `CLI$K_MAC` type, /TIP and /LIP by `CLI$K_IPV4`) and the built-in help generation.
+- The command line engine is the StarLet CLI_ROUTINES library: the verb tables drive the parsing, the type validation (/TMAC is checked by the library `CLI$K_MAC` type, /TIP and /LIP by `CLI$K_IPV4`) and the fallback help summary.
 - SCHED_FIFO is intentionally NOT used: with a small `/DELTA` a paced sender degenerates into a real-time busy loop and can starve a single/weak core system completely.
 
 ## Limitations
@@ -248,7 +259,6 @@ If the AF_PACKET receiver shows no loss while the UDP receiver does, the packets
 - IPv4 only.
 - One stream (one sender, one receiver) per process instance.
 - The AF_PACKET sender does not fragment: keep `/DATALEN` within the interface MTU + 14.
-- `/TMAC` accepts the colon-separated form only.
 - The one-way latency is not measured (the payload carries no timestamps); `delta` characterizes the arrival process, not the path delay.
 
 ## License

@@ -19,11 +19,56 @@
 #
 #		 1-AUG-2026	X-01 : Initial version.
 #
+#		12-NOV-2026	CLD	X.01-28ECO02 : The identification is taken from
+#					__IDENT__ of the head module src/yanetchk.c - the
+#					project() VERSION (it said 1.1.28) and the /IDENT of
+#					the help library (it said X-01) follow from it.
+#
 #---
 
 cmake_minimum_required(VERSION 3.16)
 
-project(YANETCHK VERSION 1.1.28 LANGUAGES C DESCRIPTION "Network path checking utility")
+#
+#	The identification of the product is __IDENT__ of the head module,
+#	X.aa-bb[ECOcc] (two digits in every field); the version is aa.bb.cc
+#	without the leading zeros: X.01-28ECO02 -> 1.28.2.  The older form
+#	Xaa-bb[ECOc] is taken as well.
+#
+file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/src/yanetchk.c YNETCHK_IDENT_LINE
+	REGEX "^#define[ \t]+__IDENT__[ \t]+\"" LIMIT_COUNT 1)
+
+if ( NOT YNETCHK_IDENT_LINE MATCHES "__IDENT__[ \t]+\"([^\"]+)\"" )
+	message(FATAL_ERROR "No __IDENT__ in src/yanetchk.c")
+endif()
+
+set(YNETCHK_IDENT "${CMAKE_MATCH_1}")
+
+if ( YNETCHK_IDENT MATCHES "^X\\." AND NOT YNETCHK_IDENT MATCHES "^X\\.[0-9][0-9]-[0-9][0-9](ECO[0-9][0-9])?$" )
+	message(FATAL_ERROR "__IDENT__ is '${YNETCHK_IDENT}', which is not of the form X.aa-bb[ECOcc] (two digits each)")
+endif()
+
+if ( NOT YNETCHK_IDENT MATCHES "^X\\.?([0-9]+)-([0-9]+)(ECO([0-9]+))?$" )
+	message(FATAL_ERROR "__IDENT__ is '${YNETCHK_IDENT}', which is not of the form X.aa-bb[ECOcc]")
+endif()
+
+#	Taken out of CMAKE_MATCH_n before the first REGEX REPLACE, which resets them
+set(YNETCHK_VER_MAJOR "${CMAKE_MATCH_1}")
+set(YNETCHK_VER_MINOR "${CMAKE_MATCH_2}")
+set(YNETCHK_VER_PATCH "${CMAKE_MATCH_4}")
+
+if ( YNETCHK_VER_PATCH STREQUAL "" )
+	set(YNETCHK_VER_PATCH "0")
+endif()
+
+string(REGEX REPLACE "^0+([0-9])" "\\1" YNETCHK_VER_MAJOR "${YNETCHK_VER_MAJOR}")
+string(REGEX REPLACE "^0+([0-9])" "\\1" YNETCHK_VER_MINOR "${YNETCHK_VER_MINOR}")
+string(REGEX REPLACE "^0+([0-9])" "\\1" YNETCHK_VER_PATCH "${YNETCHK_VER_PATCH}")
+
+project(YANETCHK
+	VERSION "${YNETCHK_VER_MAJOR}.${YNETCHK_VER_MINOR}.${YNETCHK_VER_PATCH}"
+	LANGUAGES C DESCRIPTION "Network path checking utility")
+
+message(STATUS "YANETCHK ${YNETCHK_IDENT}, version ${PROJECT_VERSION}")
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -41,7 +86,13 @@ endif()
 #
 #	Product configuration
 #
-set(YNETCHK$K_IDENT   "X-01"        CACHE STRING "Identification of the help library")
+#	The /IDENT of the help library: the ident of the head module, unless
+#	-DYNETCHK$K_IDENT=... names another (not cached, so a new __IDENT__
+#	reaches an existing build tree)
+if ( NOT DEFINED YNETCHK$K_IDENT )
+	set(YNETCHK$K_IDENT "${YNETCHK_IDENT}")
+endif()
+
 set(YNETCHK$K_LIBDIR  "share/yanetchk"  CACHE STRING "Directory the help library is installed into")
 
 option(YNETCHK$M_STRICT  "Treat the compilation diagnostics as errors"  OFF)

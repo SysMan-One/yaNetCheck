@@ -1,6 +1,6 @@
 #define	__MODULE__	"YANETCHK"
-#define	__IDENT__	"X.01-28ECO01"
-#define	__REV__		"00.01.28.1"
+#define	__IDENT__	"X.01-28ECO02"
+#define	__REV__		"00.01.28.2"
 
 /*
 **++
@@ -31,7 +31,7 @@
 **	  /DATALEN=<n>		UDP: payload length; AF_PACKET: FULL frame length
 **				(default: 128, clamped to the sane range)
 **	  /DELTA=<n>		inter-packet pacing interval, nanoseconds
-**				(default: 10000, i.e. 100 pkt/sec)
+**				(default: 10000000 = 10 ms, i.e. 100 pkt/sec)
 **	  /IFNAME=<name>	interface name, enables the AF_PACKET engine
 **	  /TMAC=<mac>		destination (next hop) MAC, aa:bb:cc:dd:ee:ff or
 **				aa-bb-cc-dd-ee-ff (default: the built-in g_tmac)
@@ -467,6 +467,13 @@
 **					CREATION DATE, stamped every MODIFICATION HISTORY
 **					entry with the RRL author mark, and set __REV__ to
 **					the ECO form derived from __IDENT__.
+**
+**	12-NOV-2026	CLD	X.01-28ECO02	ECO02 - no functional change: the message catalogue
+**					records (YNETCHK$MSGREC) are designated initialisers,
+**					which ends the ten -Wmissing-field-initializers
+**					warnings on <facname>; the build is clean with
+**					YNETCHK$M_STRICT (-Werror). The USAGE default of
+**					/DELTA is corrected to 10000000 ns (X.01-18).
 **--
 */
 
@@ -722,9 +729,11 @@ enum	{
  * "%<facname>-<sev>-" envelope (see facname below), so the leading facility
  * and severity are deliberately absent here. The ASCIC length octet <textl>
  * is the literal length. Registered once, at start-up; !UQ parameters are
- * passed as sequence numbers.
+ * passed as sequence numbers. The initialisers are designated: <facname> is
+ * stamped by __util$inimsg() from s_msgdesc, <mnemonic> stays NULL (the
+ * "IDENT, " of the text names the message).
  */
-#define	YNETCHK$MSGREC(code, fao)	{ (int) (code), { (unsigned char) (sizeof(fao) - 1), fao } }
+#define	YNETCHK$MSGREC(code, fao)	{ .sts = (int) (code), .textl = (unsigned char) (sizeof(fao) - 1), .text = fao }
 
 static EMSG_RECORD	s_msgrec [] = {
 	YNETCHK$MSGREC(YNETCHK$_SEQSYNC,   "SEQSYNC, Sequence base synchronized, Seq: !UQ"),
