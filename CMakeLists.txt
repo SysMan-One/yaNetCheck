@@ -24,6 +24,10 @@
 #					project() VERSION (it said 1.1.28) and the /IDENT of
 #					the help library (it said X-01) follow from it.
 #
+#		12-NOV-2026	CLD	X.01-28ECO02 : Packaging: CPACK makes the DEB
+#					yanetchk_<aa.bb.cc>_<arch>.deb for the release
+#					workflow (.github/workflows/release.yml).
+#
 #---
 
 cmake_minimum_required(VERSION 3.16)
@@ -88,7 +92,8 @@ endif()
 #
 #	The /IDENT of the help library: the ident of the head module, unless
 #	-DYNETCHK$K_IDENT=... names another (not cached, so a new __IDENT__
-#	reaches an existing build tree)
+#	reaches an existing build tree; a tree configured before X.01-28ECO02
+#	still has X-01 in its cache - remove it there or configure afresh)
 if ( NOT DEFINED YNETCHK$K_IDENT )
 	set(YNETCHK$K_IDENT "${YNETCHK_IDENT}")
 endif()
@@ -207,6 +212,43 @@ endif()
 #	Installation
 #
 install(TARGETS yanetchk RUNTIME DESTINATION bin)
+
+#
+#	Packaging: a DEB, made by 'cpack -G DEB' in the build tree.  Its version
+#	follows from __IDENT__ (PROJECT_VERSION, X.01-28ECO02 -> 1.28.2); the file
+#	is named as DPKG names it, yanetchk_1.28.2_amd64.deb.  The package is
+#	written into the prefix the build was configured for, since the image
+#	carries the help library's directory (YNETCHK$K_HLBDIR) under it: a
+#	package for a distribution is configured with -DCMAKE_INSTALL_PREFIX=/usr.
+#	The image links StarLet statically, so its only dependency is the C
+#	library, which DPKG-SHLIBDEPS works out; the HELP package (its browser
+#	answers /HELP) is suggested, not required.
+#
+if ( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
+	set(CPACK_PACKAGE_NAME			"yanetchk")
+	set(CPACK_PACKAGE_VENDOR		"StarLet Squad")
+	set(CPACK_PACKAGE_CONTACT		"StarLet Squad and Ruslan R. Laishev <polylab240@gmail.com>")
+	set(CPACK_PACKAGE_VERSION		"${PROJECT_VERSION}")
+	set(CPACK_PACKAGE_DESCRIPTION_SUMMARY	"Network path checking utility (UDP and AF_PACKET, loss accounting)")
+	set(CPACK_PACKAGE_DESCRIPTION
+"Sends a paced stream of UDP datagrams (or raw Ethernet+IPv4+UDP frames
+via AF_PACKET) with incrementing sequence numbers; the receiver side
+detects and accounts lost, duplicated and reordered packets.")
+	set(CPACK_PACKAGE_HOMEPAGE_URL		"https://github.com/SysMan-One/yaNetCheck")
+	set(CPACK_RESOURCE_FILE_LICENSE		"${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+	set(CPACK_PACKAGING_INSTALL_PREFIX	"${CMAKE_INSTALL_PREFIX}")
+	set(CPACK_STRIP_FILES			ON)
+	set(CPACK_VERBATIM_VARIABLES		ON)
+	set(CPACK_GENERATOR			DEB)
+
+	set(CPACK_DEBIAN_FILE_NAME		DEB-DEFAULT)
+	set(CPACK_DEBIAN_PACKAGE_SECTION	net)
+	set(CPACK_DEBIAN_PACKAGE_PRIORITY	optional)
+	set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS	ON)
+	set(CPACK_DEBIAN_PACKAGE_SUGGESTS	"help")
+
+	include(CPack)
+endif()
 
 #
 #	Regression: build the utility and exercise a round of /HELP and a

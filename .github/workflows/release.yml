@@ -1,0 +1,275 @@
+#++
+#       FACILITY: YANETCHK - a network path checking utility: the signed release kits (amd64, arm64)
+#
+#       AUTHOR: StarLet Squad and Ruslan R. Laishev (AKA: BadAss SysMan)
+#
+#       CREATION DATE: 12-NOV-2026
+#
+#       DESCRIPTION:
+#               A push of the tag that is __IDENT__ of src/yanetchk.c (X.01-28ECO02) builds
+#               the product on Debian 12 (bookworm) for amd64 and arm64, runs its
+#               regression tests (ctest), makes the DEB (prefix /usr), installs it on
+#               Debian 12, Debian 13 and Ubuntu 24.04, runs it, purges it, and attaches
+#               the packages, the sources tarball yanetchk-<ident>.tar.gz, SHA256SUMS and
+#               its minisign signature to the Release of that tag.
+#
+#               The manual run (Actions -> release -> Run workflow) with the <tag> input
+#               does the same for an existing tag (the files of its Release are
+#               replaced); without it - only builds and tests the branch, see the run's
+#               artifacts; the release job is skipped.
+#
+#               The tag must be of the form X.aa-bb[ECOcc] - two digits in every field,
+#               no "v" - and equal __IDENT__ of the tree it names; the ident is never
+#               given on the command line here, so a tag cannot name a kit the tree is
+#               not.  Anything else is refused before the build.
+#
+#               StarLet and HELP are pinned commits (STARLET_REF, VHELP_REF), the same as
+#               in ci.yml; StarLet is linked statically, HELP supplies the librarian that
+#               makes yanetchk.hlb and the browser of the help tests - the package does
+#               not need it (/HELP falls back to a summary of the command tables).
+#
+#       MODIFICATION HISTORY:
+#
+#               12-NOV-2026     CLD     X.01-28ECO02 : Initial version, after vHELP's
+#                                       release.yml and the deb/test jobs of
+#                                       utility_routines' release.yml.
+#
+#--
+
+name: release
+
+on:
+  push:
+    tags: ['X.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "An existing tag (X.01-28ECO02), equal to __IDENT__ of src/yanetchk.c of its tree, to build and release; empty - build and test only"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+# The pinned commits of StarLet and HELP - moved by hand, after a check (the same as ci.yml)
+env:
+  STARLET_REF: 7e910f809db2932c0a39904280322eb1eedef9d8     # StarLet 1.7.2
+  VHELP_REF: 9f89cd6277a4d785978aa8e9202d4782e7dce5e5     # HELP X.01-38ECO01
+
+jobs:
+  deb:
+    name: build ${{ matrix.arch }}
+    strategy:
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: debian:bookworm
+    env:
+      ARCH: ${{ matrix.arch }}
+      # The tag of this run: the input, or the pushed tag; empty for a build of a branch
+      TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name || '') }}
+    steps:
+      - name: Install prerequisites
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends build-essential cmake dpkg-dev file git ca-certificates curl
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      # Before anything is built: a tag must be X.aa-bb[ECOcc] and __IDENT__ of its tree
+      - name: Check the tag
+        run: |
+          ident=$(sed -n 's/^#define[[:space:]]*__IDENT__[[:space:]]*"\([^"]*\)".*/\1/p' src/yanetchk.c)
+          test -n "$ident" || { echo "::error::no __IDENT__ in src/yanetchk.c"; exit 1; }
+          echo "__IDENT__ of src/yanetchk.c: $ident"
+          if [ -z "$TAG" ]; then
+            echo "No tag: build and test only"
+            exit 0
+          fi
+          [[ "$TAG" =~ ^X\.[0-9]{2}-[0-9]{2}(ECO[0-9]{2})?$ ]] || { echo "::error::the tag $TAG is not of the form X.aa-bb[ECOcc] (two digits each)"; exit 1; }
+          test "$TAG" = "$ident" || { echo "::error::the tag $TAG is not __IDENT__ $ident of src/yanetchk.c"; exit 1; }
+          echo "Tag $TAG = __IDENT__"
+
+      # StarLet first: HELP is built against the installed StarLet; both go to /usr/local of the container
+      - name: StarLet and HELP from GitHub
+        run: |
+          set -e
+          mkdir -p /tmp/deps
+          for l_pair in "utility_routines:${STARLET_REF}" "vHELP:${VHELP_REF}"
+          do
+            l_repo="${l_pair%%:*}" l_ref="${l_pair#*:}"
+            curl -sSfL --retry 3 -o "/tmp/deps/${l_repo}.tar.gz" \
+              "https://github.com/SysMan-One/${l_repo}/archive/${l_ref}.tar.gz"
+            mkdir -p "/tmp/deps/${l_repo}"
+            tar -xzf "/tmp/deps/${l_repo}.tar.gz" -C "/tmp/deps/${l_repo}" --strip-components=1
+            cmake -S "/tmp/deps/${l_repo}" -B "/tmp/deps/${l_repo}-build" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_LIBDIR=lib \
+              -DBUILD_TESTING=OFF \
+              -DHELP_TESTS=OFF -DHELP_BUILD_SYSCACHE=OFF -DHELP_ALIAS=OFF
+            cmake --build "/tmp/deps/${l_repo}-build" -j "$(nproc)"
+            cmake --install "/tmp/deps/${l_repo}-build"
+          done
+
+      # Prefix /usr: the image carries the directory of yanetchk.hlb under it
+      - name: Build, test, package
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr '-DYNETCHK$M_STRICT=ON'
+          cmake --build build -j "$(nproc)"
+          ctest --test-dir build --output-on-failure || {
+            rc=$?
+            # an annotation is visible without signing in: the names of the failed tests
+            for t in $(sed 's/^[0-9]*://' build/Testing/Temporary/LastTestsFailed.log); do echo "::error::ctest FAILED: $t"; done
+            exit $rc
+          }
+          (cd build && cpack -G DEB)
+
+      - name: Check the package
+        run: |
+          deb=$(ls build/*.deb)
+          dpkg-deb --info "$deb"
+          dpkg-deb --contents "$deb"
+          case "$deb" in build/yanetchk_*_"${ARCH}".deb) ;; *) echo "::error::wrong name: $deb"; exit 1;; esac
+          # grep reads the whole list, not -q: under "bash -eo pipefail" (shell: bash) an early
+          # exit of grep -q kills the writer with SIGPIPE and fails the step
+          dpkg-deb --contents "$deb" | grep ' \./usr/bin/yanetchk$' > /dev/null
+          dpkg-deb --contents "$deb" | grep ' \./usr/share/yanetchk/yanetchk\.hlb$' > /dev/null
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: deb-${{ matrix.arch }}
+          path: build/*.deb
+          if-no-files-found: error
+
+  test:
+    name: install ${{ matrix.arch }} on ${{ matrix.distro }}
+    needs: deb
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        distro: ['debian:bookworm', 'debian:trixie', 'ubuntu:noble']
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.distro }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: deb-${{ matrix.arch }}
+
+      - name: Install the package
+        run: |
+          apt-get update
+          apt-get install --yes ./*.deb
+          test -x /usr/bin/yanetchk
+          test -f /usr/share/yanetchk/yanetchk.hlb
+
+      # No HELP browser here: /HELP answers with the summary of the command tables
+      - name: Run it, remove it
+        run: |
+          out=$(yanetchk help 2>&1)
+          echo "$out"
+          echo "$out" | grep 'Rev: X\.' > /dev/null
+          echo "$out" | grep 'send' > /dev/null
+          echo "$out" | grep 'receive' > /dev/null
+          # A short UDP run over the loopback: no root, no interface needed
+          yanetchk receive /lpn=19877 /logfile=/tmp/recv.log &
+          rpid=$!
+          sleep 1
+          timeout -s INT 4 yanetchk send /tip=127.0.0.1 /tpn=19877 /delta=1000000 /logfile=/tmp/send.log || true
+          sleep 1
+          kill -INT "$rpid"
+          wait "$rpid" || true
+          cat /tmp/recv.log
+          grep -q -- '-I-FINAL, total: [1-9]' /tmp/recv.log
+          dpkg --purge yanetchk
+          # (a '!' in front would not stop the step: errexit ignores it)
+          if [ -e /usr/bin/yanetchk ] || [ -e /usr/share/yanetchk ]; then echo "::error::yanetchk left after the purge"; exit 1; fi
+
+  release:
+    name: GitHub Release
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/X.') || inputs.tag != ''
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          path: src
+
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: 'deb-*'
+          merge-multiple: true
+
+      - name: Make the files of the Release
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          ident=$(sed -n 's/^#define[[:space:]]*__IDENT__[[:space:]]*"\([^"]*\)".*/\1/p' src/src/yanetchk.c)
+          test -n "$ident" || { echo "::error::no __IDENT__ in src/yanetchk.c"; exit 1; }
+          [[ "$TAG" =~ ^X\.[0-9]{2}-[0-9]{2}(ECO[0-9]{2})?$ ]] || { echo "::error::the tag $TAG is not of the form X.aa-bb[ECOcc] (two digits each)"; exit 1; }
+          test "$TAG" = "$ident" || { echo "::error::the tag $TAG is not __IDENT__ $ident of src/yanetchk.c"; exit 1; }
+          # X.01-28ECO02 -> 1.28.2, the version of the packages
+          ver=$(echo "$ident" | sed -E 's/^X\.([0-9]{2})-([0-9]{2})(ECO([0-9]{2}))?$/\1.\2.\4/; s/\.$/.0/; s/(^|\.)0([0-9])/\1\2/g')
+          echo "Version of the packages: $ver"
+          test "$(ls yanetchk_"$ver"_*.deb | wc -l)" = 2 || { echo "::error::not the two packages of $ver"; ls *.deb; exit 1; }
+          # The sources: the tree of the tag as git has it, nothing built in it
+          git -C src archive --format=tar.gz --prefix="yanetchk-$ident/" -o "$PWD/yanetchk-$ident.tar.gz" HEAD
+          tar tzf "yanetchk-$ident.tar.gz" | grep -x "yanetchk-$ident/src/yanetchk.c" > /dev/null
+          ls -l *.deb *.tar.gz
+          sha256sum *.deb *.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+          echo "ident=$ident" >> "$GITHUB_ENV"
+
+      # The secret MINISIGN_KEY is the secret key of minisign.pub, whole text
+      # (no password); it lives in the runner's temporary directory for this
+      # step only.  The signature is checked with the public key pinned below
+      # (the one of minisign.pub) before anything is published.
+      - name: Sign SHA256SUMS
+        env:
+          MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [ -z "${MINISIGN_KEY}" ]
+          then
+            echo "::error::no MINISIGN_KEY secret - the release would go out unsigned"
+            exit 1
+          fi
+          sudo apt-get update -q && sudo apt-get install -y -q minisign
+          key="${RUNNER_TEMP}/minisign.key"
+          trap 'rm -f "${key}"' EXIT
+          ( umask 077; printf '%s\n' "${MINISIGN_KEY}" > "${key}" )
+          minisign -S -s "${key}" -m SHA256SUMS \
+            -t "yanetchk ${TAG} SHA256SUMS signed $(date -u +%d-%b-%Y | tr a-z A-Z)"
+          # The key is pinned here, not read from src/: a re-run of an older tag has no minisign.pub.
+          minisign -Vm SHA256SUMS -P RWQl4NAqFsHKkNoHkS52WSZSk+2kb+e58DWYpoi/jVFa6TqOTAm3Ph14
+
+      - name: Attach the files to the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" *.deb *.tar.gz SHA256SUMS SHA256SUMS.minisig --clobber
+          else
+            gh release create "$TAG" *.deb *.tar.gz SHA256SUMS SHA256SUMS.minisig --title "yaNetCheck $ident" --notes-file - <<EOF
+          yanetchk $ident - a network path checking utility for Linux: a paced UDP or AF_PACKET stream with sequence numbers, the receiver accounts lost, reordered and duplicated packets. The .deb for amd64 and arm64 is installed on Debian 12, Debian 13 and Ubuntu 24.04: \`sudo apt install ./yanetchk_<version>_<arch>.deb\`. The files are in /usr. The sources: \`yanetchk-$ident.tar.gz\`.
+
+          To check a download: \`minisign -Vm SHA256SUMS -P RWQl4NAqFsHKkNoHkS52WSZSk+2kb+e58DWYpoi/jVFa6TqOTAm3Ph14\` (\`SHA256SUMS.minisig\` next to it), then \`sha256sum -c --ignore-missing SHA256SUMS\`.
+          EOF
+          fi

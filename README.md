@@ -1,6 +1,7 @@
 # YANETCHK
 
 [![CI](https://github.com/SysMan-One/yaNetCheck/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SysMan-One/yaNetCheck/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/SysMan-One/yaNetCheck)](https://github.com/SysMan-One/yaNetCheck/releases/latest)
 
 Author: StarLet Squad and Ruslan R. Laishev (AKA: BadAss SysMan)
 
@@ -260,6 +261,31 @@ If the AF_PACKET receiver shows no loss while the UDP receiver does, the packets
 - One stream (one sender, one receiver) per process instance.
 - The AF_PACKET sender does not fragment: keep `/DATALEN` within the interface MTU + 14.
 - The one-way latency is not measured (the payload carries no timestamps); `delta` characterizes the arrival process, not the path delay.
+
+## Releases
+
+A tag that is `__IDENT__` of `src/yanetchk.c`, exactly (`X.01-28ECO02`: a dot after the letter, two digits in every field, no `v`), makes a GitHub Release by `.github/workflows/release.yml`: the product is built on Debian 12 for amd64 and arm64, its tests are run, the DEB `yanetchk_<version>_<arch>.deb` (prefix `/usr`; the version follows from the ident, X.01-28ECO02 -> 1.28.2) is installed on Debian 12, Debian 13 and Ubuntu 24.04, run and removed, and the packages, the sources tarball `yanetchk-<ident>.tar.gz` and `SHA256SUMS` with its signature are attached. Any other tag is refused before the build.
+
+```
+$ sudo apt install ./yanetchk_1.28.2_amd64.deb
+```
+
+The package installs `/usr/bin/yanetchk` and `/usr/share/yanetchk/yanetchk.hlb`; the HELP package is suggested, not required - without its browser `/HELP` shows the summary of the command tables.
+
+Every push to `main` and every pull request is built and tested (x86_64 and aarch64, `ctest`) by `.github/workflows/ci.yml`, the badge at the top.
+
+## Checking a download
+
+A release carries `SHA256SUMS.minisig`, a [minisign](https://jedisct1.github.io/minisign/) signature of `SHA256SUMS`: one signature for every package and the sources tarball. The public key is in `minisign.pub` here (the same key signs the kits of StarLet, HELP and AlphaEmu):
+
+    RWQl4NAqFsHKkNoHkS52WSZSk+2kb+e58DWYpoi/jVFa6TqOTAm3Ph14
+
+Put the files you took next to `SHA256SUMS` and `SHA256SUMS.minisig`, then:
+
+    minisign -Vm SHA256SUMS -P RWQl4NAqFsHKkNoHkS52WSZSk+2kb+e58DWYpoi/jVFa6TqOTAm3Ph14
+    sha256sum -c --ignore-missing SHA256SUMS
+
+The first must say `Signature and comment signature verified`, the second `OK` for every file. Anything else - the file is not the one released: do not install it.
 
 ## License
 
