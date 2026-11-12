@@ -1,0 +1,111 @@
+#++
+#       FACILITY: YANETCHK - a network path checking utility
+#
+#       AUTHOR: StarLet Squad and Ruslan R. Laishev (AKA: BadAss SysMan)
+#
+#       CREATION DATE: 12-NOV-2026
+#
+#       DESCRIPTION:
+#               Builds the product and runs its regression tests (ctest:
+#               help_overview, help_topic, help_switch, sendrecv,
+#               window_accounting, ring_needs_ifname) on x86_64 and aarch64.
+#
+#               yanetchk wants StarLet (and, optionally, HELP) as INSTALLED
+#               CMake packages - see CMakeLists.txt.  Both are taken here as
+#               archives of a pinned commit (STARLET_REF, VHELP_REF) of their
+#               GitHub repositories (SysMan-One/utility_routines,
+#               SysMan-One/vHELP) - a new commit there cannot break this build
+#               unseen; move the pin by hand.  They are built and installed
+#               into a prefix of the runner, and the build of yanetchk is
+#               pointed at it with CMAKE_PREFIX_PATH.  With HELPTRAN present
+#               the yanetchk.hlb library is built and /HELP is answered by the
+#               HELP browser out of it.
+#
+#               sendrecv runs a UDP sender and receiver over 127.0.0.1 and
+#               ring_needs_ifname only checks that /RING without /IFNAME is
+#               refused: neither needs root, CAP_NET_RAW or a real interface.
+#
+#                   push to main, pull_request, workflow_dispatch   build + ctest
+#
+#       MODIFICATION HISTORY:
+#
+#               12-NOV-2026     CLD     X.01-28ECO01 : Initial revision, after
+#                                       SEARCH's ci.yml; STARLET_REF 7e910f8 =
+#                                       StarLet 1.7.2, VHELP_REF 9f89cd6 =
+#                                       HELP X.01-38ECO01.
+#
+#--
+
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The pinned commits of StarLet and HELP - moved by hand, after a check
+env:
+  STARLET_REF: 7e910f809db2932c0a39904280322eb1eedef9d8     # StarLet 1.7.2
+  VHELP_REF: 9f89cd6277a4d785978aa8e9202d4782e7dce5e5     # HELP X.01-38ECO01
+
+jobs:
+  test:
+    name: ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64,  runner: ubuntu-24.04 }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+
+    env:
+      DEPS_PREFIX: ${{ github.workspace }}/_deps/prefix
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Tools of the build host
+        run: sudo apt-get update -q && sudo apt-get install -y -q cmake gcc make
+
+      # StarLet first: HELP is built against the installed StarLet
+      - name: StarLet and HELP from GitHub
+        run: |
+          set -e
+          mkdir -p _deps
+          for l_pair in "utility_routines:${STARLET_REF}" "vHELP:${VHELP_REF}"
+          do
+            l_repo="${l_pair%%:*}" l_ref="${l_pair#*:}"
+            curl -sSfL --retry 3 -o "_deps/${l_repo}.tar.gz" \
+              "https://github.com/SysMan-One/${l_repo}/archive/${l_ref}.tar.gz"
+            mkdir -p "_deps/${l_repo}"
+            tar -xzf "_deps/${l_repo}.tar.gz" -C "_deps/${l_repo}" --strip-components=1
+            cmake -S "_deps/${l_repo}" -B "_deps/${l_repo}-build" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX="${DEPS_PREFIX}" \
+              -DCMAKE_PREFIX_PATH="${DEPS_PREFIX}" \
+              -DCMAKE_INSTALL_LIBDIR=lib \
+              -DBUILD_TESTING=OFF \
+              -DHELP_TESTS=OFF -DHELP_BUILD_SYSCACHE=OFF -DHELP_ALIAS=OFF
+            cmake --build "_deps/${l_repo}-build" --parallel
+            cmake --install "_deps/${l_repo}-build"
+          done
+
+      # PATH: HELPTRAN must be found at configure time, the browser at test time
+      - name: Configure
+        run: |
+          export PATH="${DEPS_PREFIX}/bin:${PATH}"
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="${DEPS_PREFIX}"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: |
+          export PATH="${DEPS_PREFIX}/bin:${PATH}"
+          ctest --test-dir build --output-on-failure

@@ -1,0 +1,13 @@
+# CodeGraph index - local only
+.codegraph/
+
+# Old release kits - published on the Releases page, not in the tree
+yanetchk-*.tar.gz
+
+# Build trees
+build/
+build-*/
+_build/
+_deps/
+CMakeFiles/
+CMakeCache.txt
