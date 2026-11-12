@@ -14,7 +14,7 @@ Typical applications:
 - distinguishing "packets do not reach the wire" from "packets reach the interface but are dropped by the local firewall" (the AF_PACKET receiver sees frames before netfilter, the UDP receiver sees them after);
 - long-run soak testing: the tool prints periodic statistics and survives sender/receiver restarts on either side.
 
-Current revision: X.01-28ECO02 (`__IDENT__` of `src/yanetchk.c`; the build takes the version, 1.28.2, from it).
+Current revision: X.01-28ECO03 (`__IDENT__` of `src/yanetchk.c`; the build takes the version, 1.28.3, from it).
 
 ## Build
 
@@ -22,7 +22,7 @@ Current revision: X.01-28ECO02 (`__IDENT__` of `src/yanetchk.c`; the build takes
 
 - Linux with glibc (tested on x86_64 and aarch64), kernel 3.x or newer;
 - GCC or Clang with C11 support (`_Atomic` is used);
-- the StarLet package (UTILITY$ROUTINES, [SysMan-One/utility_routines](https://github.com/SysMan-One/utility_routines)). It is consumed as an installed CMake package rather than vendored in-tree: build and install it once, then point this build at its prefix. The CI builds against StarLet 1.7.2 (commit `7e910f8`);
+- the StarLet package (UTILITY$ROUTINES, [SysMan-One/utility_routines](https://github.com/SysMan-One/utility_routines)). It is consumed as an installed CMake package rather than vendored in-tree: build and install it once, then point this build at its prefix. The CI builds against StarLet 1.7.3 (commit `fde1672`);
 - the external HELP package ([SysMan-One/vHELP](https://github.com/SysMan-One/vHELP): the librarian `vhelptran`/`helptran` and the browser `vhelp`/`help`): `doc/yanetchk.md` is compiled into `yanetchk.hlb` by the librarian, and `/HELP` delegates to the browser. yanetchk carries no help-reading code of its own anymore. The CI builds against HELP X.01-38ECO01 (commit `9f89cd6`).
 
 Install the StarLet package first:
@@ -112,7 +112,7 @@ The library is located, in order, via `$YANETCHK_HLP`, then next to the binary, 
 Building the help library by hand (the CMake build does it; needs the HELP package's librarian on the `PATH`):
 
 ```
-$ vhelptran doc/yanetchk.md /OUTPUT=yanetchk.hlb /IDENT=X.01-28ECO02
+$ vhelptran doc/yanetchk.md /OUTPUT=yanetchk.hlb /IDENT=X.01-28ECO03
 ```
 
 Install `yanetchk.hlb` and the HELP browser next to the `yanetchk` binary, or point `$YANETCHK_HLP` at the library.
@@ -242,7 +242,7 @@ If the AF_PACKET receiver shows no loss while the UDP receiver does, the packets
 ### Startup and restart semantics
 
 - The receiver may be started at any moment: the first valid packet only synchronizes the sequence base, the pre-start traffic is NOT counted as loss.
-- The sender may be restarted at any moment: the receiver detects the deep sequence rollback, prints a single warning and resynchronizes; the loss counters of the previous session are kept, the new session starts clean.
+- The sender may be restarted: the receiver detects the deep sequence rollback (more than 100000), prints a single warning and resynchronizes; the counters (total, lost, reord, dup) are set to zero and the new session is measured from scratch. A restart after fewer than 100000 packets is not seen as one: the new packets show up as DEEPREORD (and near the old high Seq as duplicates), so restart the receiver as well then.
 - The sender survives receiver restarts: ICMP Port Unreachable is treated as a transient condition, the paced transmission continues, and the receiver will account the real gap on return. The sender says nothing about it in a Release build (in a Debug build /TRACE shows a `send()->-1, errno: 111 (ICMP Port Unreachable...)` line per packet).
 
 ## Implementation notes
@@ -264,10 +264,10 @@ If the AF_PACKET receiver shows no loss while the UDP receiver does, the packets
 
 ## Releases
 
-A tag that is `__IDENT__` of `src/yanetchk.c`, exactly (`X.01-28ECO02`: a dot after the letter, two digits in every field, no `v`), makes a GitHub Release by `.github/workflows/release.yml`: the product is built on Debian 12 for amd64 and arm64, its tests are run, the DEB `yanetchk_<version>_<arch>.deb` (prefix `/usr`; the version follows from the ident, X.01-28ECO02 -> 1.28.2) is installed on Debian 12, Debian 13 and Ubuntu 24.04, run and removed, and the packages, the sources tarball `yanetchk-<ident>.tar.gz` and `SHA256SUMS` with its signature are attached. Any other tag is refused before the build.
+A tag that is `__IDENT__` of `src/yanetchk.c`, exactly (`X.01-28ECO03`: a dot after the letter, two digits in every field, no `v`), makes a GitHub Release by `.github/workflows/release.yml`: the product is built on Debian 12 for amd64 and arm64, its tests are run, the DEB `yanetchk_<version>_<arch>.deb` (prefix `/usr`; the version follows from the ident, X.01-28ECO02 -> 1.28.2) is installed on Debian 12, Debian 13 and Ubuntu 24.04, run and removed, and the packages, the sources tarball `yanetchk-<ident>.tar.gz` and `SHA256SUMS` with its signature are attached. Any other tag is refused before the build.
 
 ```
-$ sudo apt install ./yanetchk_1.28.2_amd64.deb
+$ sudo apt install ./yanetchk_1.28.3_amd64.deb
 ```
 
 The package installs `/usr/bin/yanetchk` and `/usr/share/yanetchk/yanetchk.hlb`; the HELP package is suggested, not required - without its browser `/HELP` shows the summary of the command tables.

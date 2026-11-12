@@ -1,6 +1,6 @@
 #define	__MODULE__	"YANETCHK"
-#define	__IDENT__	"X.01-28ECO02"
-#define	__REV__		"00.01.28.2"
+#define	__IDENT__	"X.01-28ECO03"
+#define	__REV__		"1.28.3"
 
 /*
 **++
@@ -474,6 +474,17 @@
 **					warnings on <facname>; the build is clean with
 **					YNETCHK$M_STRICT (-Werror). The USAGE default of
 **					/DELTA is corrected to 10000000 ns (X.01-18).
+**
+**	12-NOV-2026	CLD	X.01-28ECO03	ECO03 - no code change: the help library source
+**					doc/yanetchk.md (shipped as yanetchk.hlb) shows
+**					the output as the program prints it now - the
+**					Delta, Calculated load, SENT, STATS, SEQSYNC,
+**					SEQGAP/REORD/DUP and RESTART lines, taken from a
+**					loopback run; /TRACE shows the per-packet
+**					ECONNREFUSED line in a Debug build only; a sender
+**					restart is seen only after more than 100000
+**					packets and zeroes the counters. __REV__ takes
+**					the aa.bb.cc form of the rule (1.28.3).
 **--
 */
 

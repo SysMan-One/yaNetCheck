@@ -1,4 +1,4 @@
-<!-- ident: X-01 -->
+<!-- ident: X.01-28ECO03 -->
 
 # YANETCHK -- a network path checking utility
 
@@ -23,18 +23,31 @@ both on the loopback:
 
 ```
 $ yanetchk receive /lpn=12347
-%YANETCHK-I:  Mode is: Receiver
-%YANETCHK-I:  Start <s_thread_receiver> on: 0.0.0.0:12347 ...
+%YANETCHK-I: Rev: X.01-28ECO03/x86_64, (built  at Nov 12 2026 22:07:32 with CC 12.2.0)
+%YANETCHK-I: Mode is: Receiver
+%YANETCHK-I: Payload size after validation: 128 octets
+%YANETCHK-I: Delta: 10000000 nsec (0 sec, 10000000 nanosec)
+%YANETCHK-I: Start <s_thread_receiver> on: 0.0.0.0:12347 ...
 
 $ yanetchk send /tip=127.0.0.1 /tpn=12347 /delta=1000000
-%YANETCHK-I:  Mode is: Sender
-%YANETCHK-I:  Delta: 1000 usec (0 sec, 1000000 nanosec)
+%YANETCHK-I: Rev: X.01-28ECO03/x86_64, (built  at Nov 12 2026 22:07:32 with CC 12.2.0)
+%YANETCHK-I: Mode is: Sender
+%YANETCHK-I: Payload size after validation: 128 octets
+%YANETCHK-I: Delta: 1000000 nsec (0 sec, 1000000 nanosec)
+%YANETCHK-I: Calculated load: 1000 pps, L2 1.360 Mbit/s (170 octets/frame), wire 1.552 Mbit/s (194 octets/frame incl. FCS+preamble+IFG)
+%YANETCHK-I: Start <s_thread_sender> to: 127.0.0.1:12347 ...
 ```
 
-The receiver then prints a running tally every three seconds:
+Every line really starts with the date, the time and the thread id
+(`12-11-2026 22:07:34.452 2569551 %YANETCHK-I: ...`); the examples here
+leave them out.
+
+Both sides then print a running tally every three seconds -- SENT by
+the sender, STATS by the receiver:
 
 ```
-%YANETCHK-I-STATS,  Rcvd: +2999 pkts, total: 2999 pkts, lost: +0/0 pkts, Seq: 2999, delta: 998534 nsec, rate: 1000 pps, 1387 kbit/s (wire).
+%YANETCHK-I-SENT, Sent: +3000 pkts, total: 3000 pkts, Seq: 3001, rate: 999 pps, 1551 kbit/s (wire).
+%YANETCHK-I-STATS, Rcvd: +2999 pkts, total: 2999 pkts, lost: +0/0, reord: +0/0 (max 0), dup: +0/0, Seq: 2999, delta: 995090 nsec, rate: 999 pps, 1551 kbit/s (wire).
 ```
 
 # SEND
@@ -47,27 +60,39 @@ interface; no ARP is performed, the destination MAC comes from /TMAC.
 
 The sender survives receiver restarts: an ICMP Port Unreachable is a
 transient condition and the transmission continues at the paced rate.
+The sender prints nothing about it.
 
 Examples:
 
 ```
 $ yanetchk send /tip=192.168.1.10 /tpn=12347 /delta=1000000 /datalen=512
-%YANETCHK-I:  Mode is: Sender
-%YANETCHK-I:  Payload size after validation: 512 octets
-%YANETCHK-I:  Delta: 1000 usec (0 sec, 1000000 nanosec)
-%YANETCHK-I:  Start <s_thread_sender> to: 192.168.1.10:12347 ...
-%YANETCHK-I:  Sent: +2999 pkts, total: 2999 pkts, lost: +0/0 pkts, Seq: 3000, delta: 0 nsec.
+%YANETCHK-I: Mode is: Sender
+%YANETCHK-I: Payload size after validation: 512 octets
+%YANETCHK-I: Delta: 1000000 nsec (0 sec, 1000000 nanosec)
+%YANETCHK-I: Calculated load: 1000 pps, L2 4.432 Mbit/s (554 octets/frame), wire 4.624 Mbit/s (578 octets/frame incl. FCS+preamble+IFG)
+%YANETCHK-I: Start <s_thread_sender> to: 192.168.1.10:12347 ...
+%YANETCHK-I-SENT, Sent: +3000 pkts, total: 3000 pkts, Seq: 3001, rate: 999 pps, 4620 kbit/s (wire).
 ```
+
+`Seq` of the sender is the next sequence number to send, so it is one
+more than `total`.
 
 An AF_PACKET sender (root) out of eth0, the frames addressed to the
 router MAC; the source IP is taken from eth0 automatically:
 
 ```
 # yanetchk send /ifname=eth0 /tip=192.168.1.10 /tpn=12347 /tmac=aa:04:00:de:c0:01
-%YANETCHK-I:  LIP is taken from IF <eth0>: 192.168.1.1
-%YANETCHK-I:  Target MAC (next hop): aa:04:00:de:c0:01
-%YANETCHK-I:  Start <s_thread_sender2>: IF: eth0 (index: 2), 192.168.1.1:12347 -> 192.168.1.10:12347, frame: 128 octets
+%YANETCHK-I: Mode is: Sender
+%YANETCHK-I: IFname: <eth0>, IFindex: 2
+%YANETCHK-I: LIP is taken from IF <eth0>: 192.168.1.1
+%YANETCHK-I: Target MAC (next hop): aa:04:00:de:c0:01
+%YANETCHK-I: Full frame size after validation: 128 octets
+%YANETCHK-I: Delta: 10000000 nsec (0 sec, 10000000 nanosec)
+%YANETCHK-I: Calculated load: 100 pps, L2 0.102 Mbit/s (128 octets/frame), wire 0.122 Mbit/s (152 octets/frame incl. FCS+preamble+IFG)
+%YANETCHK-I: Start <s_thread_sender2>: IF: eth0 (index: 2), 192.168.1.1:12345 -> 192.168.1.10:12347, dst MAC: aa:04:00:de:c0:01, frame: 128 octets
 ```
+
+The source port is /LPN, 12345 by default.
 
 ## TIP
 
@@ -121,8 +146,11 @@ $ ping -c1 <gateway_ip> >/dev/null; ip neigh show <gateway_ip>
 
 ## TRACE
 
-`/TRACE` -- extensible diagnostic output; also unmutes the per-packet
-ECONNREFUSED warnings of the UDP sender.
+`/TRACE` -- extensible diagnostic output. Only a Debug build prints
+the per-packet trace lines, for example the `send()->-1, errno: 111`
+(ICMP Port Unreachable) line of the UDP sender for every packet while
+no receiver listens. A Release build, as installed from a package, says
+nothing about it.
 
 ## RING
 
@@ -140,7 +168,8 @@ simply skipped (with a warning) on a kernel that does not support it.
 
 ```
 # yanetchk send /ifname=eth0 /tip=192.168.1.10 /tpn=12347 /tmac=aa:04:00:de:c0:01 /delta=0 /ring
-%YANETCHK-I:  Start <s_thread_sender3>: IF: eth0 (index: 2), ... frame: 128 octets, TX ring: 1024 frames, mode: line-rate
+%YANETCHK-I: Calculated load: line rate (/DELTA=0, unbounded), L2 128 octets/frame, wire 152 octets/frame
+%YANETCHK-I: Start <s_thread_sender3>: IF: eth0 (index: 2), 192.168.1.1:12345 -> 192.168.1.10:12347, frame: 128 octets, TX ring: 1024 frames, mode: line-rate
 ```
 
 ## LOGFILE
@@ -156,8 +185,8 @@ simply skipped (with a warning) on a kernel that does not support it.
 Listens for the test stream and accounts the received, lost, duplicated
 and reordered packets by the sequence numbers. The very first valid
 packet only synchronizes the sequence base, so a mid-stream start is not
-a loss; a deep sequence rollback is treated as a sender restart and
-resynchronizes the base.
+a loss; a sequence rollback of more than 100000 is treated as a sender
+restart and resynchronizes the base.
 
 With /IFNAME the AF_PACKET engine is selected: a raw socket bound to the
 interface with an in-kernel BPF filter. The frames are seen BEFORE the
@@ -168,28 +197,38 @@ Examples:
 
 ```
 $ yanetchk receive /lpn=12347
-%YANETCHK-I:  Mode is: Receiver
-%YANETCHK-I:  Start <s_thread_receiver> on: 0.0.0.0:12347 ...
-%YANETCHK-I:  Sequence base synchronized, Seq: 1
-%YANETCHK-I-STATS,  Rcvd: +2999 pkts, total: 2999 pkts, lost: +0/0 pkts, Seq: 2999, delta: 998534 nsec, rate: 1000 pps, 1387 kbit/s (wire).
+%YANETCHK-I: Mode is: Receiver
+%YANETCHK-I: Payload size after validation: 128 octets
+%YANETCHK-I: Delta: 10000000 nsec (0 sec, 10000000 nanosec)
+%YANETCHK-I: Start <s_thread_receiver> on: 0.0.0.0:12347 ...
+%YANETCHK-W-SEQSYNC, Sequence base synchronized, Seq: 1
+%YANETCHK-I-STATS, Rcvd: +2999 pkts, total: 2999 pkts, lost: +0/0, reord: +0/0 (max 0), dup: +0/0, Seq: 2999, delta: 995090 nsec, rate: 999 pps, 1551 kbit/s (wire).
 ```
+
+SEQSYNC is a warning on purpose: at the start it only says where the
+receiver joined the stream, but in the middle of a run it marks a
+break in the sequence. The receiver ignores /DATALEN and /DELTA; the
+two lines about them can be passed over.
 
 An AF_PACKET receiver (root) on end0, the in-kernel BPF filtering by the
 UDP port, plus a destination IP filter:
 
 ```
 # yanetchk receive /ifname=end0 /lpn=12347 /lip=192.168.1.10
-%YANETCHK-I:  IFname: <end0>, IFindex: 7
-%YANETCHK-I:  Start <s_thread_receiver2> on IF index: 7, UDP port: 12347 ...
+%YANETCHK-I: Mode is: Receiver
+%YANETCHK-I: IFname: <end0>, IFindex: 7
+%YANETCHK-I: Payload size after validation: 128 octets
+%YANETCHK-I: Delta: 10000000 nsec (0 sec, 10000000 nanosec)
+%YANETCHK-I: Start <s_thread_receiver2> on IF index: 7, UDP port: 12347 ...
 ```
 
-Out-of-order and duplicate arrivals are reported as they happen (a
-forward gap is only noted as pending, not yet lost):
+With /VERBOSE, out-of-order and duplicate arrivals are reported as they
+happen (a forward gap is only noted as pending, not yet lost):
 
 ```
-%YANETCHK-I:  SEQGAP, Seq gap: 49 -> 51 (1 ahead), pending
-%YANETCHK-I:  REORD, Rcvd Seq: 50 --- Reordered (1 behind), recovered
-%YANETCHK-W:  DUP, Rcvd Seq: 30 --- Duplicate detected
+%YANETCHK-I-SEQGAP, Seq gap: 49 -> 51 (1 ahead), pending
+%YANETCHK-I-REORD, Rcvd Seq: 50 --- Reordered (1 behind), recovered
+%YANETCHK-W-DUP, Rcvd Seq: 30 --- Duplicate detected
 ```
 
 Each sequence event carries a VMS message keyword (SEQSYNC, SEQGAP,
@@ -217,6 +256,11 @@ memory-mapped ring, removing the per-packet system call that otherwise
 makes the receiver drop most of a line-rate stream -- on loopback
 against the TX-ring sender the loss fell roughly from 83% to 29%. The
 BPF port filter, the `/LIP` check and the accounting are unchanged.
+
+```
+# yanetchk receive /ifname=end0 /lpn=12347 /ring
+%YANETCHK-I: Start <s_thread_receiver3> on IF index: 7, UDP port: 12347, RX ring V3: 16 blocks x 256 KiB ...
+```
 
 ## TRACE
 
@@ -246,9 +290,12 @@ A statistics line is printed every three seconds; in the receiver mode
 it carries the loss, reorder and duplicate counters:
 
 ```
-Rcvd: +197113 pkts, total: 89676009 pkts, lost: +0/112, \
-reord: +3/57 (max 4), dup: +0/2, Seq: 90250913, delta: 2527 nsec.
+%YANETCHK-I-STATS, Rcvd: +197113 pkts, total: 89676009 pkts, lost: +0/112,
+    reord: +3/57 (max 4), dup: +0/2, Seq: 90250913, delta: 2527 nsec,
+    rate: 65704 pps, 79896 kbit/s (wire).
 ```
+
+(It is one line on the screen; it is broken here to fit.)
 
 Every counter is shown as `+interval/cumulative`. `lost` is the
 confirmed loss (a gap that left the reordering window unseen); `reord`
@@ -258,7 +305,11 @@ inside the window and were recovered -- these are NOT counted as loss;
 `Seq` is the high water mark; `delta` is the inter-arrival interval of
 the LAST packet -- at high rates it looks bimodal because of the NIC
 interrupt coalescing, the true average interval is the interval length
-divided by the `+N` receive count.
+divided by the `+N` receive count. `rate` is the packet rate and the
+wire bandwidth of the interval: the frame octets plus the FCS, the
+preamble and the inter-frame gap (24 octets per frame). If the sender
+started or stopped inside an interval, `rate` of that interval is lower
+than the real rate.
 
 A gap is held pending inside a sliding window of 4096 sequence numbers
 and charged to `lost` only when it is evicted still unseen, so a late
@@ -282,19 +333,33 @@ A healthy high-rate run over AF_PACKET, holding about 65 kpps with no
 loss over millions of packets:
 
 ```
-%YANETCHK-I-STATS,  Rcvd: +197113 pkts, total: 89676009 pkts, lost: +0/112 pkts, Seq: 90250913, delta: 2527 nsec.
-%YANETCHK-I-STATS,  Rcvd: +196207 pkts, total: 90069270 pkts, lost: +0/112 pkts, Seq: 90644174, delta: 60409 nsec.
+%YANETCHK-I-STATS, Rcvd: +197113 pkts, total: 89676009 pkts, lost: +0/112, reord: +3/57 (max 4), dup: +0/2, Seq: 90250913, delta: 2527 nsec, rate: 65704 pps, 79896 kbit/s (wire).
+%YANETCHK-I-STATS, Rcvd: +196207 pkts, total: 89872216 pkts, lost: +0/112, reord: +0/57 (max 4), dup: +0/2, Seq: 90447120, delta: 60409 nsec, rate: 65402 pps, 79528 kbit/s (wire).
 ```
 
 The cumulative 112 does not grow, and `delta` alternates between a few
 microseconds and tens of them -- the NIC delivers packets in batches.
 
-When the sender is restarted the receiver detects the deep sequence
-rollback, resynchronizes and charges no loss for it:
+When the sender is restarted after more than 100000 packets, the
+receiver sees the sequence go back by more than 100000, prints one
+warning, resynchronizes and charges no loss for it:
 
 ```
-%YANETCHK-W:  Local Seq: 32375220 --> Rcvd Seq: 134572 --- Sender restart detected, resynchronize
+%YANETCHK-W-RESTART, High Seq: 32375220 --> Rcvd Seq: 1 --- Sender restart detected, resynchronize
 ```
+
+The counters (total, lost, reord, dup) then start again from zero for
+the new session. A restart after fewer than 100000 packets is not seen
+as a restart: each new packet is then reported as a deep reorder and
+counted in `reord`, and near the old high Seq as a duplicate, until the
+new sequence passes the old one:
+
+```
+%YANETCHK-W-DEEPREORD, Rcvd Seq: 1 is 39762 behind the window - deep reorder
+%YANETCHK-W-DEEPREORD, Rcvd Seq: 2 is 39761 behind the window - deep reorder
+```
+
+Restart the receiver too in that case.
 
 # SIGNALS
 
