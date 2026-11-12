@@ -475,7 +475,7 @@
 **					YNETCHK$M_STRICT (-Werror). The USAGE default of
 **					/DELTA is corrected to 10000000 ns (X.01-18).
 **
-**	12-NOV-2026	CLD	X.01-28ECO03	ECO03 - no code change: the help library source
+**	12-NOV-2026	RRL	X.01-28ECO03	ECO03 - no code change: the help library source
 **					doc/yanetchk.md (shipped as yanetchk.hlb) shows
 **					the output as the program prints it now - the
 **					Delta, Calculated load, SENT, STATS, SEQSYNC,
