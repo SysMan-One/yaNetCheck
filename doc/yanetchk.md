@@ -23,14 +23,14 @@ both on the loopback:
 
 ```
 $ yanetchk receive /lpn=12347
-%YANETCHK-I: Rev: X.01-28ECO03/x86_64, (built  at Nov 12 2026 22:07:32 with CC 12.2.0)
+%YANETCHK-I: Rev: X.01-28ECO03/x86_64, (built  at Nov 12 2026 22:13:19 with CC 12.2.0)
 %YANETCHK-I: Mode is: Receiver
 %YANETCHK-I: Payload size after validation: 128 octets
 %YANETCHK-I: Delta: 10000000 nsec (0 sec, 10000000 nanosec)
 %YANETCHK-I: Start <s_thread_receiver> on: 0.0.0.0:12347 ...
 
 $ yanetchk send /tip=127.0.0.1 /tpn=12347 /delta=1000000
-%YANETCHK-I: Rev: X.01-28ECO03/x86_64, (built  at Nov 12 2026 22:07:32 with CC 12.2.0)
+%YANETCHK-I: Rev: X.01-28ECO03/x86_64, (built  at Nov 12 2026 22:13:19 with CC 12.2.0)
 %YANETCHK-I: Mode is: Sender
 %YANETCHK-I: Payload size after validation: 128 octets
 %YANETCHK-I: Delta: 1000000 nsec (0 sec, 1000000 nanosec)
@@ -43,11 +43,13 @@ Every line really starts with the date, the time and the thread id
 leave them out.
 
 Both sides then print a running tally every three seconds -- SENT by
-the sender, STATS by the receiver:
+the sender, STATS by the receiver (here the receiver line is its
+second one: the first interval started before the sender did, so it
+counted fewer packets):
 
 ```
 %YANETCHK-I-SENT, Sent: +3000 pkts, total: 3000 pkts, Seq: 3001, rate: 999 pps, 1551 kbit/s (wire).
-%YANETCHK-I-STATS, Rcvd: +2999 pkts, total: 2999 pkts, lost: +0/0, reord: +0/0 (max 0), dup: +0/0, Seq: 2999, delta: 995090 nsec, rate: 999 pps, 1551 kbit/s (wire).
+%YANETCHK-I-STATS, Rcvd: +3000 pkts, total: 4999 pkts, lost: +0/0, reord: +0/0 (max 0), dup: +0/0, Seq: 4999, delta: 999374 nsec, rate: 999 pps, 1551 kbit/s (wire).
 ```
 
 # SEND
@@ -71,7 +73,7 @@ $ yanetchk send /tip=192.168.1.10 /tpn=12347 /delta=1000000 /datalen=512
 %YANETCHK-I: Delta: 1000000 nsec (0 sec, 1000000 nanosec)
 %YANETCHK-I: Calculated load: 1000 pps, L2 4.432 Mbit/s (554 octets/frame), wire 4.624 Mbit/s (578 octets/frame incl. FCS+preamble+IFG)
 %YANETCHK-I: Start <s_thread_sender> to: 192.168.1.10:12347 ...
-%YANETCHK-I-SENT, Sent: +3000 pkts, total: 3000 pkts, Seq: 3001, rate: 999 pps, 4620 kbit/s (wire).
+%YANETCHK-I-SENT, Sent: +3002 pkts, total: 5997 pkts, Seq: 5998, rate: 1000 pps, 4626 kbit/s (wire).
 ```
 
 `Seq` of the sender is the next sequence number to send, so it is one
@@ -202,13 +204,14 @@ $ yanetchk receive /lpn=12347
 %YANETCHK-I: Delta: 10000000 nsec (0 sec, 10000000 nanosec)
 %YANETCHK-I: Start <s_thread_receiver> on: 0.0.0.0:12347 ...
 %YANETCHK-W-SEQSYNC, Sequence base synchronized, Seq: 1
-%YANETCHK-I-STATS, Rcvd: +2999 pkts, total: 2999 pkts, lost: +0/0, reord: +0/0 (max 0), dup: +0/0, Seq: 2999, delta: 995090 nsec, rate: 999 pps, 1551 kbit/s (wire).
+%YANETCHK-I-STATS, Rcvd: +3000 pkts, total: 4999 pkts, lost: +0/0, reord: +0/0 (max 0), dup: +0/0, Seq: 4999, delta: 999374 nsec, rate: 999 pps, 1551 kbit/s (wire).
 ```
 
 SEQSYNC is a warning on purpose: at the start it only says where the
 receiver joined the stream, but in the middle of a run it marks a
-break in the sequence. The receiver ignores /DATALEN and /DELTA; the
-two lines about them can be passed over.
+break in the sequence. The "Payload size" and "Delta" lines show only
+the built-in defaults: the receiver does not use them (and does not
+accept /DATALEN or /DELTA).
 
 An AF_PACKET receiver (root) on end0, the in-kernel BPF filtering by the
 UDP port, plus a destination IP filter:
